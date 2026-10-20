@@ -16,7 +16,7 @@ def recommend_action(problem: str) -> tuple[str, str]:
     text = unicodedata.normalize(
     "NFKD", str(problem).casefold()
     ).encode("ascii", "ignore").decode("ascii")
-    
+
     if any(word in text for word in ["cancelamento", "atraso", "embarque"]):
         return (
             "comunicacao_e_acompanhamento_operacional",
