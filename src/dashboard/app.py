@@ -1,0 +1,577 @@
+
+from pathlib import Path
+
+import duckdb
+import pandas as pd
+import plotly.express as px
+import streamlit as st
+
+
+# ============================================================
+# CONFIGURAÇÃO
+# ============================================================
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DB_PATH = PROJECT_ROOT / "data" / "analytics" / "company_analytics.duckdb"
+
+st.set_page_config(
+    page_title="Radar de Alto Valor | Company",
+    page_icon="✈️",
+    layout="wide",
+)
+
+# Paleta visual
+AZUL = "#00529B"
+AZUL_CLARO = "#EAF3FB"
+VERDE = "#16865B"
+VERMELHO = "#C0392B"
+CINZA = "#667085"
+
+
+# ============================================================
+# ACESSO AOS DADOS
+# ============================================================
+
+@st.cache_data(ttl=300)
+def read_query(query: str) -> pd.DataFrame:
+    """Executa uma consulta somente leitura no DuckDB."""
+    if not DB_PATH.exists():
+        raise FileNotFoundError(
+            f"Banco não encontrado: {DB_PATH}. "
+            "Execute primeiro build_analytics_db.py."
+        )
+
+    connection = duckdb.connect(str(DB_PATH), read_only=True)
+
+    try:
+        return connection.execute(query).df()
+    finally:
+        connection.close()
+
+
+def money(value) -> str:
+    """Formata valores em reais."""
+    if pd.isna(value):
+        return "—"
+
+    formatted = f"{value:,.2f}"
+    formatted = formatted.replace(",", "X").replace(".", ",").replace("X", ".")
+    return f"R$ {formatted}"
+
+
+def percentage(value) -> str:
+    if pd.isna(value):
+        return "—"
+    return f"{value:.2f}%".replace(".", ",")
+
+
+# ============================================================
+# CABEÇALHO
+# ============================================================
+
+st.title("✈️ Radar de Alto Valor")
+st.subheader("Inteligência de experiência do cliente e oportunidades de retenção")
+
+st.markdown(
+    """
+    Transformando padrões de reclamações em prioridades de atuação
+    e cenários de decisão para programas de fidelidade.
+    """
+)
+
+st.info(
+    "Fonte pública: ANAC / Consumidor.gov.br — ano de 2025. "
+    "Reclamações não representam necessariamente clientes únicos nem comprovam churn. "
+    "Os cenários de ROI são simulações baseadas em premissas configuráveis."
+)
+
+if not DB_PATH.exists():
+    st.error(
+        "Banco analítico não encontrado. Execute "
+        "`python src/analysis/build_analytics_db.py` antes de abrir o dashboard."
+    )
+    st.stop()
+
+
+# ============================================================
+# CARREGAMENTO DOS INDICADORES
+# ============================================================
+
+try:
+    indicadores = read_query(
+        """
+        SELECT *
+        FROM indicadores_2025
+        LIMIT 1
+        """
+    )
+
+    mensal = read_query(
+        """
+        SELECT mes, reclamacoes
+        FROM reclamacoes_mensais_2025
+        """
+    )
+
+    problemas = read_query(
+        """
+        SELECT
+            Problema,
+            total_avaliado,
+            nao_resolvidas_pct
+        FROM desfecho_por_problema_2025
+        WHERE total_avaliado >= 30
+        ORDER BY nao_resolvidas_pct DESC
+        """
+    )
+
+    grupos = read_query(
+        """
+        SELECT *
+        FROM desfecho_por_grupo_2025
+        """
+    )
+
+    roi = read_query(
+        """
+        SELECT
+            scenario_id,
+            scenario_name,
+            data_type,
+            eligible_units_assumption,
+            action_cost_per_unit_brl,
+            fixed_campaign_cost_brl,
+            assumed_incremental_retention_pct,
+            contribution_margin_per_retained_customer_brl,
+            benefit_horizon_months,
+            investment_brl,
+            expected_retained_units_simulated,
+            gross_incremental_benefit_brl,
+            net_benefit_brl,
+            roi_pct,
+            payback_months,
+            retention_validated
+        FROM roi_scenarios
+        ORDER BY roi_pct DESC
+        """
+    )
+
+    recomendacoes = read_query(
+        """
+        SELECT *
+        FROM recomendacoes_2025
+        """
+    )
+
+except Exception as exc:
+    st.error(f"Não foi possível carregar os dados: {exc}")
+    st.stop()
+
+
+if indicadores.empty:
+    st.warning("A tabela de indicadores está vazia.")
+    st.stop()
+
+
+# ============================================================
+# FILTROS
+# ============================================================
+
+st.sidebar.header("Filtros")
+
+if not mensal.empty:
+    meses_disponiveis = mensal["mes"].astype(str).tolist()
+    meses_selecionados = st.sidebar.multiselect(
+        "Meses para análise",
+        options=meses_disponiveis,
+        default=meses_disponiveis,
+    )
+    mensal_filtrado = mensal[
+        mensal["mes"].astype(str).isin(meses_selecionados)
+    ].copy()
+else:
+    mensal_filtrado = mensal.copy()
+
+volume_minimo = st.sidebar.number_input(
+    "Mínimo de avaliações por problema",
+    min_value=1,
+    max_value=10000,
+    value=30,
+    step=10,
+)
+
+problemas_filtrados = problemas[
+    problemas["total_avaliado"] >= volume_minimo
+].copy()
+
+st.sidebar.caption("Os filtros afetam os gráficos e tabelas correspondentes.")
+
+
+# ============================================================
+# INDICADORES EXECUTIVOS
+# ============================================================
+
+dados = indicadores.iloc[0]
+
+st.header("1. Visão executiva")
+
+col1, col2, col3, col4, col5 = st.columns(5)
+
+col1.metric(
+    "Reclamações",
+    f"{int(dados['total_reclamacoes']):,}".replace(",", "."),
+)
+
+col2.metric(
+    "Respondidas",
+    percentage(dados["reclamacoes_respondidas_pct"]),
+)
+
+col3.metric(
+    "Não resolução",
+    percentage(dados["nao_resolvidas_pct_sobre_avaliadas"]),
+    help="Percentual entre reclamações avaliadas como resolvidas ou não resolvidas.",
+)
+
+col4.metric(
+    "Resposta média",
+    f"{dados['tempo_medio_resposta_dias']:.1f} dias",
+)
+
+col5.metric(
+    "Nota média",
+    f"{dados['nota_media_consumidor']:.2f}/5",
+    help="Média das notas disponíveis no conjunto analisado.",
+)
+
+st.caption(
+    f"Avaliações válidas: {int(dados['reclamacoes_avaliadas']):,}. "
+    f"Resolvidas: {int(dados['reclamacoes_resolvidas']):,}. "
+    f"Não resolvidas: {int(dados['reclamacoes_nao_resolvidas']):,}."
+    .replace(",", ".")
+)
+
+
+# ============================================================
+# EVOLUÇÃO MENSAL
+# ============================================================
+
+st.header("2. Evolução mensal das reclamações")
+
+if mensal_filtrado.empty:
+    st.warning("Não há meses selecionados para exibir.")
+else:
+    ordem_meses = {
+        "Janeiro": 1,
+        "Fevereiro": 2,
+        "Março": 3,
+        "Abril": 4,
+        "Maio": 5,
+        "Junho": 6,
+        "Julho": 7,
+        "Agosto": 8,
+        "Setembro": 9,
+        "Outubro": 10,
+        "Novembro": 11,
+        "Dezembro": 12,
+    }
+
+    mensal_filtrado["ordem_mes"] = (
+        mensal_filtrado["mes"].map(ordem_meses).fillna(99)
+    )
+    mensal_filtrado = mensal_filtrado.sort_values("ordem_mes")
+
+    fig_mensal = px.line(
+        mensal_filtrado,
+        x="mes",
+        y="reclamacoes",
+        markers=True,
+        title="Volume mensal de reclamações — 2025",
+        labels={
+            "mes": "Mês",
+            "reclamacoes": "Reclamações",
+        },
+    )
+
+    fig_mensal.update_traces(
+        line=dict(color=AZUL, width=3),
+        marker=dict(size=8),
+    )
+    fig_mensal.update_layout(
+        xaxis_title="Mês",
+        yaxis_title="Quantidade de reclamações",
+        hovermode="x unified",
+    )
+
+    st.plotly_chart(fig_mensal, use_container_width=True)
+
+    st.dataframe(
+        mensal_filtrado[["mes", "reclamacoes"]].rename(
+            columns={
+                "mes": "Mês",
+                "reclamacoes": "Reclamações",
+            }
+        ),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+
+# ============================================================
+# PRIORIZAÇÃO DE PROBLEMAS
+# ============================================================
+
+st.header("3. Radar de problemas críticos")
+
+st.markdown(
+    """
+    A priorização combina a taxa de não resolução com o volume de avaliações.
+    Uma taxa elevada baseada em poucas avaliações deve ser interpretada com cautela.
+    """
+)
+
+if problemas_filtrados.empty:
+    st.warning("Nenhum problema atende ao volume mínimo selecionado.")
+else:
+    top_problemas = problemas_filtrados.head(15).sort_values(
+        "nao_resolvidas_pct",
+        ascending=True,
+    )
+
+    fig_problemas = px.bar(
+        top_problemas,
+        x="nao_resolvidas_pct",
+        y="Problema",
+        orientation="h",
+        color="nao_resolvidas_pct",
+        color_continuous_scale=["#B7D7F0", AZUL, "#9B1C1C"],
+        hover_data={"total_avaliado": True, "nao_resolvidas_pct": ":.2f"},
+        title="Problemas com maior taxa de não resolução",
+        labels={
+            "Problema": "Tipo de problema",
+            "nao_resolvidas_pct": "Não resolução (%)",
+            "total_avaliado": "Avaliações válidas",
+        },
+    )
+
+    fig_problemas.update_layout(
+        yaxis_title="",
+        xaxis_title="Não resolução (%)",
+        coloraxis_showscale=False,
+        height=600,
+        margin=dict(l=10, r=10, t=60, b=20),
+    )
+
+    st.plotly_chart(fig_problemas, use_container_width=True)
+
+    tabela_problemas = problemas_filtrados.rename(
+        columns={
+            "Problema": "Problema",
+            "total_avaliado": "Avaliações válidas",
+            "nao_resolvidas_pct": "Não resolução (%)",
+        }
+    ).copy()
+
+    tabela_problemas["Não resolução (%)"] = (
+        tabela_problemas["Não resolução (%)"].round(2)
+    )
+
+    st.dataframe(
+        tabela_problemas,
+        use_container_width=True,
+        hide_index=True,
+    )
+
+
+# ============================================================
+# GRUPOS DE PROBLEMAS
+# ============================================================
+
+st.header("4. Desfecho por grupo de problema")
+
+if not grupos.empty:
+    colunas_grupos = grupos.columns.tolist()
+
+    possiveis_nomes = [
+        "Grupo Problema",
+        "grupo_problema",
+        "Grupo_Problema",
+    ]
+
+    coluna_grupo = next(
+        (nome for nome in possiveis_nomes if nome in colunas_grupos),
+        None,
+    )
+
+    possiveis_taxas = [
+        "nao_resolvidas_pct",
+        "nao_resolvidas_pct_sobre_avaliadas",
+    ]
+
+    coluna_taxa = next(
+        (nome for nome in possiveis_taxas if nome in colunas_grupos),
+        None,
+    )
+
+    if coluna_grupo and coluna_taxa:
+        fig_grupos = px.bar(
+            grupos.sort_values(coluna_taxa, ascending=False),
+            x=coluna_grupo,
+            y=coluna_taxa,
+            title="Taxa de não resolução por grupo",
+            labels={
+                coluna_grupo: "Grupo",
+                coluna_taxa: "Não resolução (%)",
+            },
+        )
+
+        fig_grupos.update_layout(
+            xaxis_title="Grupo de problema",
+            yaxis_title="Não resolução (%)",
+            xaxis_tickangle=-30,
+        )
+
+        st.plotly_chart(fig_grupos, use_container_width=True)
+    else:
+        st.caption(
+            "Os nomes das colunas de grupo ou taxa são diferentes "
+            "dos nomes esperados para este gráfico."
+        )
+        st.dataframe(grupos, use_container_width=True, hide_index=True)
+
+
+# ============================================================
+# RECOMENDAÇÕES
+# ============================================================
+
+st.header("5. Recomendações de atuação")
+
+st.markdown(
+    """
+    As recomendações são regras de priorização derivadas dos problemas observados.
+    Elas não demonstram, por si só, que uma ação aumentará a retenção.
+    """
+)
+
+if not recomendacoes.empty:
+    st.dataframe(
+        recomendacoes,
+        use_container_width=True,
+        hide_index=True,
+    )
+else:
+    st.info("Nenhuma recomendação disponível.")
+
+
+# ============================================================
+# ROI SIMULADO
+# ============================================================
+
+st.header("6. Simulação financeira de ações")
+
+st.warning(
+    "SIMULAÇÃO: taxas de retenção, unidades elegíveis, custos e margens "
+    "são premissas hipotéticas. Não são resultados observados da Azul."
+)
+
+if not roi.empty:
+    fig_roi = px.bar(
+        roi,
+        x="scenario_name",
+        y="roi_pct",
+        color="roi_pct",
+        color_continuous_scale=["#C0392B", "#F1C40F", "#16865B"],
+        title="ROI estimado por cenário",
+        labels={
+            "scenario_name": "Ação",
+            "roi_pct": "ROI (%)",
+        },
+        hover_data={
+            "investment_brl": ":,.2f",
+            "gross_incremental_benefit_brl": ":,.2f",
+            "net_benefit_brl": ":,.2f",
+            "payback_months": ":.1f",
+        },
+    )
+
+    fig_roi.update_layout(
+        xaxis_title="Ação",
+        yaxis_title="ROI (%)",
+        coloraxis_showscale=False,
+        xaxis_tickangle=-20,
+    )
+
+    st.plotly_chart(fig_roi, use_container_width=True)
+
+    tabela_roi = roi[
+        [
+            "scenario_name",
+            "investment_brl",
+            "gross_incremental_benefit_brl",
+            "net_benefit_brl",
+            "roi_pct",
+            "payback_months",
+        ]
+    ].copy()
+
+    tabela_roi = tabela_roi.rename(
+        columns={
+            "scenario_name": "Cenário",
+            "investment_brl": "Investimento (R$)",
+            "gross_incremental_benefit_brl": "Benefício bruto (R$)",
+            "net_benefit_brl": "Resultado líquido (R$)",
+            "roi_pct": "ROI (%)",
+            "payback_months": "Payback (meses)",
+        }
+    )
+
+    st.dataframe(
+        tabela_roi,
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    with st.expander("Premissas utilizadas na simulação"):
+        st.dataframe(
+            roi[
+                [
+                    "scenario_name",
+                    "eligible_units_assumption",
+                    "action_cost_per_unit_brl",
+                    "fixed_campaign_cost_brl",
+                    "assumed_incremental_retention_pct",
+                    "contribution_margin_per_retained_customer_brl",
+                    "benefit_horizon_months",
+                    "retention_validated",
+                ]
+            ].rename(
+                columns={
+                    "scenario_name": "Cenário",
+                    "eligible_units_assumption": "Unidades hipotéticas",
+                    "action_cost_per_unit_brl": "Custo por unidade (R$)",
+                    "fixed_campaign_cost_brl": "Custo fixo (R$)",
+                    "assumed_incremental_retention_pct": "Retenção incremental assumida (%)",
+                    "contribution_margin_per_retained_customer_brl": "Margem por cliente retido (R$)",
+                    "benefit_horizon_months": "Horizonte (meses)",
+                    "retention_validated": "Retenção validada?",
+                }
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+else:
+    st.info("Nenhum cenário financeiro foi encontrado.")
+
+
+# ============================================================
+# RODAPÉ
+# ============================================================
+
+st.divider()
+
+st.caption(
+    "Radar de Alto Valor — protótipo de hackathon. "
+    "Fonte pública: ANAC / Consumidor.gov.br, dados de 2025. "
+    "Indicadores de reclamações são observados; projeções financeiras são simuladas. "
+    "Não há inferência individual de churn ou CLV sem dados transacionais apropriados."
+)

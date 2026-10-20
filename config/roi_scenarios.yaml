@@ -1,0 +1,30 @@
+
+currency: BRL
+
+scenarios:
+  - id: cancelamento_voo
+    name: Comunicação e acompanhamento de cancelamentos
+    eligible_units: 1000
+    action_cost_per_unit: 20.0
+    fixed_campaign_cost: 2000.0
+    assumed_incremental_retention_pct: 8.0
+    contribution_margin_per_retained_customer: 300.0
+    benefit_horizon_months: 12
+
+  - id: bagagem
+    name: Acompanhamento de problemas com bagagem
+    eligible_units: 500
+    action_cost_per_unit: 30.0
+    fixed_campaign_cost: 1500.0
+    assumed_incremental_retention_pct: 6.0
+    contribution_margin_per_retained_customer: 350.0
+    benefit_horizon_months: 12
+
+  - id: atendimento
+    name: Atendimento especializado
+    eligible_units: 800
+    action_cost_per_unit: 15.0
+    fixed_campaign_cost: 1000.0
+    assumed_incremental_retention_pct: 5.0
+    contribution_margin_per_retained_customer: 250.0
+    benefit_horizon_months: 12

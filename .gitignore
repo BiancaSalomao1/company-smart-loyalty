@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Ambiente e segredos
+.env
+.env.*
+!.env.example
+.streamlit/secrets.toml
+
+# Dados locais e banco analítico
+data/bronze/*
+data/silver/*
+data/gold/*
+data/analytics/*
+!data/bronze/.gitkeep
+!data/silver/.gitkeep
+!data/gold/.gitkeep
+!data/analytics/.gitkeep
+
+# Banco DuckDB
+*.duckdb
+*.duckdb.wal
+
+# Sistema e ferramentas
+.DS_Store
+.idea/
+.vscode/
+
+# Dados e artefatos locais
+data/bronze/
+data/silver/
+data/gold/
+data/analytics/
+
+# Logs e arquivos temporários
+*.log
+.DS_Store
+Thumbs.db
+
+# Testes e cobertura
+.coverage
+htmlcov/

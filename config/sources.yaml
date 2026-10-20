@@ -1,0 +1,57 @@
+# Fontes públicas do projeto Azul Smart Loyalty.
+# URLs de páginas de metadados/catálogos; não são necessariamente URLs diretas dos arquivos.
+# Antes de automatizar a coleta, confirmar formato, licença/condições de uso e URL do recurso.
+
+sources:
+  - name: anac_consumidor_gov
+    description: "Reclamações de consumidores sobre empresas aéreas, com classificação ANAC e avaliação do atendimento."
+    url: "https://www.anac.gov.br/acesso-a-informacao/dados-abertos/areas-de-atuacao/voos-e-operacoes-aereas/dados-do-consumidor-gov"
+    format: html
+    data_format: "CSV/JSON (recurso listado no catálogo)"
+    enabled: true
+    priority: 1
+    role: primary
+    collection_mode: "catalog_then_download"
+    notes: "Identificar o link do recurso CSV/JSON e registrar a data de download e a versão do arquivo."
+
+  - name: anac_atrasos_cancelamentos
+    description: "Percentuais de atrasos e cancelamentos de voos por empresa/rota/período."
+    url: "https://www.anac.gov.br/acesso-a-informacao/dados-abertos/areas-de-atuacao/voos-e-operacoes-aereas/percentuais-de-atrasos-e-cancelamentos"
+    format: html
+    data_format: CSV
+    enabled: true
+    priority: 2
+    role: complementary
+    collection_mode: "catalog_then_download"
+    notes: "Usar para contextualizar problemas operacionais; não prova que um cliente específico abandonou a companhia."
+
+  - name: anac_tarifas_domesticas
+    description: "Dados de tarifas domésticas comercializadas por empresa, rota, mês e valor."
+    url: "https://www.anac.gov.br/acesso-a-informacao/dados-abertos/areas-de-atuacao/voos-e-operacoes-aereas/tarifas-aereas-domesticas/46-tarifas-aereas-domesticas"
+    format: html
+    data_format: CSV
+    enabled: false
+    priority: 3
+    role: complementary
+    collection_mode: "catalog_then_download"
+    notes: "Fonte opcional. Não relaciona diretamente preço com fidelidade individual; avaliar somente após a base de reclamações."
+
+  - name: azul_fidelidade
+    description: "Regras e benefícios oficiais do programa Azul Fidelidade."
+    url: "https://www.voeazul.com.br/br/pt/programa-fidelidade"
+    format: html
+    enabled: false
+    priority: 2
+    role: business_rules
+    collection_mode: "manual_or_authorized_access"
+    notes: "O acesso automatizado testado retornou HTTP 403. Não contornar bloqueios nem armazenar credenciais/cookies. Consultar manualmente ou buscar documentação oficial acessível."
+
+  - name: reclame_aqui
+    description: "Página pública de reclamações sobre a Azul."
+    url: "https://www.reclameaqui.com.br/empresa/azul/"
+    format: html
+    enabled: false
+    priority: 4
+    role: optional
+    collection_mode: "manual_review_or_authorized_access"
+    notes: "HTTP 200 não garante que os dados estejam estruturados ou autorizados para coleta automatizada. Verificar termos e disponibilidade antes de habilitar."
