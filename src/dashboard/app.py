@@ -8,6 +8,8 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
+import sys, os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 from src.knowledge.answer_question import answer_question
 from src.ingestion.update_anac_dataset import update_dataset
 from src.analysis.process_anac_year import process_year

@@ -46,3 +46,5 @@ Thumbs.db
 # Testes e cobertura
 .coverage
 htmlcov/
+
+company-smart-loyalty.tar
