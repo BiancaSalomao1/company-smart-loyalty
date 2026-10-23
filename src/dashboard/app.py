@@ -605,9 +605,23 @@ else:
     )
     st.plotly_chart(fig_matrix, use_container_width=True)
 
+    st.subheader("Simulação de relacionamento regional")
+    col_reg1, col_reg2 = st.columns(2)
+    routes_available = ["Todas"] + sorted(customer_profiles["preferred_route_synthetic"].unique().tolist())
+    with col_reg1:
+        selected_route = st.selectbox("Filtrar por rota regional", routes_available)
+    with col_reg2:
+        top_n_customers = st.slider("Quantidade demonstrativa de clientes", min_value=2, max_value=20, value=5, step=1)
+
+    filtered_customers = customer_profiles.copy()
+    if selected_route != "Todas":
+        filtered_customers = filtered_customers[filtered_customers["preferred_route_synthetic"] == selected_route]
+
+    sample_customers = filtered_customers.head(top_n_customers)
+
     selected_customer = st.selectbox(
         "Selecione um passageiro sintético para a demonstração",
-        customer_profiles["customer_id"].tolist(),
+        sample_customers["customer_id"].tolist() if not sample_customers.empty else customer_profiles["customer_id"].head(5).tolist(),
     )
     profile = customer_profiles.loc[
         customer_profiles["customer_id"] == selected_customer
