@@ -11,10 +11,11 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copia o código da aplicação.
+# Copia o código da aplicação e base documental inicial.
 COPY src/ ./src/
 COPY config/ ./config/
 COPY sql/ ./sql/
+COPY data/documents/ ./data/documents/
 
 EXPOSE 8501
 

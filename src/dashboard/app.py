@@ -1,10 +1,17 @@
 
+import json
+from datetime import datetime
 from pathlib import Path
 
 import duckdb
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+
+from src.knowledge.answer_question import answer_question
+from src.ingestion.update_anac_dataset import update_dataset
+from src.analysis.process_anac_year import process_year
+from src.analysis.build_analytics_db import create_database
 
 
 # ============================================================
@@ -13,6 +20,7 @@ import streamlit as st
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DB_PATH = PROJECT_ROOT / "data" / "analytics" / "company_analytics.duckdb"
+SYNTHETIC_METRICS_PATH = PROJECT_ROOT / "data" / "gold" / "metricas_modelo_sintetico.json"
 
 st.set_page_config(
     page_title="Radar de Alto Valor | Company",
@@ -167,6 +175,22 @@ except Exception as exc:
     st.error(f"Não foi possível carregar os dados: {exc}")
     st.stop()
 
+try:
+    customer_profiles = read_query(
+        """
+        SELECT customer_id, flights_last_12m, flights_previous_12m, months_since_last_flight,
+               avg_ticket_brl, points_balance, service_issues_last_12m,
+               engagement_score, churn_risk_score, clv_simulado_12m_brl,
+               loyalty_tier_synthetic, preferred_route_synthetic, segment,
+               recommended_action, recommendation_rationale, risk_explanation,
+               suggested_channel, draft_message, estimated_action_cost_brl
+        FROM perfis_clientes_sinteticos
+        ORDER BY churn_risk_score DESC, clv_simulado_12m_brl DESC
+        """
+    )
+except Exception:
+    customer_profiles = pd.DataFrame()
+
 
 if indicadores.empty:
     st.warning("A tabela de indicadores está vazia.")
@@ -178,6 +202,55 @@ if indicadores.empty:
 # ============================================================
 
 st.sidebar.header("Filtros")
+
+st.sidebar.divider()
+st.sidebar.subheader("Atualização anual da fonte pública")
+selected_data_year = st.sidebar.number_input(
+    "Ano dos dados ANAC",
+    min_value=2014,
+    max_value=datetime.now().year,
+    value=2025,
+    step=1,
+    help="A base atual só é substituída após validação de estrutura e período.",
+)
+if st.sidebar.button("Validar e baixar nova base"):
+    try:
+        with st.spinner("Baixando e validando a fonte pública..."):
+            update_metadata = update_dataset(int(selected_data_year))
+    except Exception as exc:
+        st.sidebar.error(f"A atualização não foi promovida: {exc}")
+    else:
+        st.sidebar.success(
+            f"Base {update_metadata['year']} validada: "
+            f"{update_metadata['rows_validated']:,} registros."
+        )
+        st.sidebar.info(
+            "A etapa Bronze foi atualizada. Execute o processamento analítico "
+            "do ano validado antes de trocar os indicadores exibidos."
+        )
+
+company_for_processing = st.sidebar.text_input(
+    "Nome da empresa na fonte", value="Azul Linhas Aéreas",
+    help="Deve corresponder exatamente ao campo 'Nome Fantasia' no CSV validado.",
+)
+if st.sidebar.button("Processar base validada e reconstruir banco"):
+    try:
+        with st.spinner("Gerando indicadores e reconstruindo o banco analítico..."):
+            result = process_year(
+                int(selected_data_year), company_for_processing
+            )
+            create_database()
+            st.cache_data.clear()
+    except Exception as exc:
+        st.sidebar.error(f"O processamento não foi concluído: {exc}")
+    else:
+        st.sidebar.success(
+            f"Ano {result['year']} processado: {result['records']:,} reclamações."
+        )
+        st.sidebar.info(
+            "A tabela anual foi criada no DuckDB. A seleção de visualização por ano "
+            "será aplicada em seguida; o painel atual permanece na referência de 2025."
+        )
 
 if not mensal.empty:
     meses_disponiveis = mensal["mes"].astype(str).tolist()
@@ -464,10 +537,100 @@ else:
 
 
 # ============================================================
+# PERFIS SINTÉTICOS
+# ============================================================
+
+st.header("6. Clientes sintéticos: valor, risco e ação")
+
+st.warning(
+    "DEMONSTRAÇÃO COM DADOS SINTÉTICOS: perfis, CLV, risco e ações abaixo "
+    "não correspondem a passageiros reais e não devem orientar decisões operacionais."
+)
+
+if customer_profiles.empty:
+    st.info(
+        "A base sintética ainda não foi gerada. Execute `python "
+        "src/synthetic/generate_passengers.py`, `python "
+        "src/analysis/build_customer_intelligence.py` e reconstrua o DuckDB."
+    )
+else:
+    segment_summary = (
+        customer_profiles.groupby("segment", as_index=False)
+        .agg(
+            clientes=("customer_id", "count"),
+            risco_medio=("churn_risk_score", "mean"),
+            clv_medio=("clv_simulado_12m_brl", "mean"),
+        )
+    )
+    fig_segments = px.bar(
+        segment_summary,
+        x="segment",
+        y="clientes",
+        color="risco_medio",
+        hover_data={"clv_medio": ":,.2f", "risco_medio": ":.2%"},
+        color_continuous_scale=[VERDE, "#F1C40F", VERMELHO],
+        labels={"segment": "Segmento", "clientes": "Perfis sintéticos", "risco_medio": "Risco médio"},
+        title="Perfis sintéticos por segmento",
+    )
+    fig_segments.update_layout(coloraxis_showscale=False)
+    st.plotly_chart(fig_segments, use_container_width=True)
+
+    fig_matrix = px.scatter(
+        customer_profiles,
+        x="churn_risk_score",
+        y="clv_simulado_12m_brl",
+        color="segment",
+        hover_name="customer_id",
+        hover_data={"preferred_route_synthetic": True, "loyalty_tier_synthetic": True},
+        labels={
+            "churn_risk_score": "Risco estimado (dados sintéticos)",
+            "clv_simulado_12m_brl": "CLV simulado em 12 meses (R$)",
+            "segment": "Segmento",
+        },
+        title="Matriz de priorização: valor simulado × risco estimado",
+    )
+    st.plotly_chart(fig_matrix, use_container_width=True)
+
+    selected_customer = st.selectbox(
+        "Selecione um passageiro sintético para a demonstração",
+        customer_profiles["customer_id"].tolist(),
+    )
+    profile = customer_profiles.loc[
+        customer_profiles["customer_id"] == selected_customer
+    ].iloc[0]
+    col1, col2, col3 = st.columns(3)
+    col1.metric("CLV simulado (12 meses)", money(profile["clv_simulado_12m_brl"]))
+    col2.metric("Risco estimado", percentage(profile["churn_risk_score"] * 100))
+    col3.metric("Segmento", profile["segment"])
+    st.caption(
+        f"Tier sintético: {profile['loyalty_tier_synthetic']} · "
+        f"Rota preferida sintética: {profile['preferred_route_synthetic']}"
+    )
+    st.write(f"**Fatores de risco demonstrativos:** {profile['risk_explanation']}")
+    st.write(f"**Ação sugerida:** {profile['recommended_action']}")
+    st.caption(profile["recommendation_rationale"])
+    st.write(f"**Canal sugerido:** {profile['suggested_channel']}")
+    st.write(f"**Mensagem rascunhada:** {profile['draft_message']}")
+    st.caption(
+        f"Custo demonstrativo da ação: {money(profile['estimated_action_cost_brl'])}. "
+        "Aprovação humana e elegibilidade são obrigatórias antes de qualquer envio."
+    )
+
+    if SYNTHETIC_METRICS_PATH.exists():
+        metrics = json.loads(SYNTHETIC_METRICS_PATH.read_text(encoding="utf-8"))
+        st.caption(
+            "Avaliação em dados sintéticos separados: "
+            f"acurácia {metrics['accuracy']:.1%}, "
+            f"precisão {metrics['precision']:.1%}, "
+            f"recall {metrics['recall']:.1%}."
+        )
+
+
+# ============================================================
 # ROI SIMULADO
 # ============================================================
 
-st.header("6. Simulação financeira de ações")
+st.header("7. Simulação financeira de ações")
 
 st.warning(
     "SIMULAÇÃO: taxas de retenção, unidades elegíveis, custos e margens "
@@ -561,6 +724,50 @@ if not roi.empty:
         )
 else:
     st.info("Nenhum cenário financeiro foi encontrado.")
+
+
+# ============================================================
+# DIAGNÓSTICO DOCUMENTAL COM IA
+# ============================================================
+
+st.header("8. Diagnóstico com base documental")
+
+st.markdown(
+    """
+    Faça perguntas sobre o programa de fidelidade documentado. A resposta usa
+    apenas trechos recuperados da base local e identifica suas fontes.
+    """
+)
+
+question = st.text_area(
+    "Pergunta para o diagnóstico",
+    placeholder="Ex.: Quais benefícios são mencionados e o que ainda precisa ser validado?",
+)
+
+if st.button("Gerar diagnóstico", type="primary"):
+    try:
+        result = answer_question(question)
+    except ValueError as exc:
+        st.warning(str(exc))
+    except RuntimeError as exc:
+        st.info(str(exc))
+    else:
+        st.markdown(result["answer"])
+
+        if result["sources"]:
+            st.caption("Evidências recuperadas para a resposta")
+            st.dataframe(
+                pd.DataFrame(result["sources"]).rename(
+                    columns={
+                        "id": "Referência",
+                        "document": "Documento",
+                        "section": "Seção",
+                        "score": "Relevância",
+                    }
+                ),
+                use_container_width=True,
+                hide_index=True,
+            )
 
 
 # ============================================================

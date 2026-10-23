@@ -22,7 +22,25 @@ GOLD_FILES = {
     "desfecho_por_problema_2025": "company_desfecho_por_problema_2025.csv",
     "recomendacoes_2025": "company_recomendacoes_2025.csv",
     "roi_scenarios": "roi_scenarios.csv",
+    "perfis_clientes_sinteticos": "perfis_clientes_sinteticos.csv",
 }
+
+YEARLY_FILE_PREFIXES = {
+    "indicadores": "company_indicadores_",
+    "desfecho_por_problema": "company_desfecho_por_problema_",
+    "recomendacoes": "company_recomendacoes_",
+    "reclamacoes_mensais": "company_reclamacoes_mensais_",
+}
+
+
+def yearly_gold_files() -> dict[str, Path]:
+    """Descobre saídas anuais sem apagar ou mesclar anos anteriores."""
+    files = {}
+    for table_prefix, file_prefix in YEARLY_FILE_PREFIXES.items():
+        for path in GOLD_DIR.glob(f"{file_prefix}[0-9][0-9][0-9][0-9].csv"):
+            year = path.stem.rsplit("_", 1)[-1]
+            files[f"{table_prefix}_{year}"] = path
+    return files
 
 
 def create_database() -> None:
@@ -71,6 +89,16 @@ def create_database() -> None:
                 f"{row_count:,} registros"
             )
 
+            imported += 1
+
+        for table_name, csv_path in yearly_gold_files().items():
+            csv_path_sql = str(csv_path).replace("'", "''")
+            connection.execute(
+                f'''CREATE OR REPLACE TABLE "{table_name}" AS
+                SELECT * FROM read_csv_auto('{csv_path_sql}', header = true, sample_size = -1, nullstr = '')'''
+            )
+            row_count = connection.execute(f'SELECT COUNT(*) FROM "{table_name}"').fetchone()[0]
+            print(f"[OK] {table_name}: {row_count:,} registros")
             imported += 1
 
         print(f"\nTabelas importadas: {imported}")

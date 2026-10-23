@@ -13,6 +13,7 @@ Utilizar dados públicos de reclamações para identificar padrões de problemas
 - Indicadores por mês, grupo e tipo de problema.
 - Recomendações baseadas em regras.
 - Simulação de ROI com premissas configuráveis.
+- Passageiros inteiramente sintéticos, com CLV, risco e segmentação demonstrativos.
 - Armazenamento analítico em DuckDB.
 - Dashboard interativo com Streamlit.
 - Execução conteinerizada com Docker Compose.
@@ -49,8 +50,20 @@ pip install -r requirements.txt
 Após preparar os dados e gerar o banco analítico:
 
 ```bash
+python src/synthetic/generate_passengers.py
+python src/analysis/build_customer_intelligence.py
+python src/analysis/build_analytics_db.py
+```
+
+Em seguida:
+
+```bash
 streamlit run src/dashboard/app.py
 ```
+
+### Atualização de dados públicos
+
+O painel permite baixar e validar uma base anual da ANAC para a camada Bronze. A ação confere o formato, as colunas obrigatórias e o período, salvando hash e metadados somente após aprovação. A promoção da nova base para indicadores analíticos deve ocorrer pelo pipeline de processamento correspondente; a base já exibida pelo dashboard não é substituída se a validação falhar.
 
 ## Execução com Docker
 
@@ -71,3 +84,5 @@ docker compose down
 ## Status
 
 Protótipo em desenvolvimento para um hackathon. A integração com dados privados de clientes e transações ainda não está implementada.
+
+Os perfis de passageiros, scores, métricas e recomendações de CRM são sintéticos e servem exclusivamente à demonstração. Consulte [a documentação de dados sintéticos](docs/synthetic-data.md) antes de utilizar esses resultados.
