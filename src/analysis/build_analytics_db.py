@@ -23,6 +23,7 @@ GOLD_FILES = {
     "recomendacoes_2025": "company_recomendacoes_2025.csv",
     "roi_scenarios": "roi_scenarios.csv",
     "perfis_clientes_sinteticos": "perfis_clientes_sinteticos.csv",
+    "influenciadores_viagem": "influenciadores_viagem.csv",
 }
 
 YEARLY_FILE_PREFIXES = {

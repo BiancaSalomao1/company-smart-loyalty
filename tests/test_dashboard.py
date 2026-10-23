@@ -15,6 +15,7 @@ class DashboardTests(unittest.TestCase):
         headers = [header.value for header in app.header]
         self.assertIn("6. Clientes sintéticos: valor, risco e ação", headers)
         self.assertIn("8. Diagnóstico com base documental", headers)
+        self.assertIn("9. Influenciadores e parceiros de relacionamento", headers)
 
 
 if __name__ == "__main__":

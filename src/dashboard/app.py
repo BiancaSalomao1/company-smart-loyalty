@@ -191,6 +191,20 @@ try:
 except Exception:
     customer_profiles = pd.DataFrame()
 
+try:
+    influenciadores = read_query(
+        """
+        SELECT ranking, creator_name, focus_theme, primary_platform,
+               subscriber_tier, content_alignment_score, loyalty_focus,
+               avg_views_per_video, estimated_cpm_brl, fit_score,
+               suggested_partnership, notes
+        FROM influenciadores_viagem
+        ORDER BY ranking ASC
+        """
+    )
+except Exception:
+    influenciadores = pd.DataFrame()
+
 
 if indicadores.empty:
     st.warning("A tabela de indicadores está vazia.")
@@ -768,6 +782,82 @@ if st.button("Gerar diagnóstico", type="primary"):
                 use_container_width=True,
                 hide_index=True,
             )
+
+
+# ============================================================
+# INFLUENCIADORES E PARCEIROS DE RELACIONAMENTO
+# ============================================================
+
+st.header("9. Influenciadores e parceiros de relacionamento")
+
+st.markdown(
+    """
+    Curadoria transparente de criadores de conteúdo para ações regionais e campanhas de relacionamento.
+    O ranking considera critérios objetivos: alinhamento temático com o programa de fidelidade,
+    alcance médio e eficiência estimada de investimento (CPM).
+    """
+)
+
+if influenciadores.empty:
+    st.info("Nenhum parceiro ou influenciador catalogado no momento.")
+else:
+    col_rank1, col_rank2 = st.columns([2, 1])
+
+    with col_rank1:
+        fig_creators = px.bar(
+            influenciadores,
+            x="creator_name",
+            y="fit_score",
+            color="fit_score",
+            color_continuous_scale=["#B7D7F0", AZUL, "#16865B"],
+            title="Score de adequação por criador de conteúdo",
+            labels={
+                "creator_name": "Criador / Canal",
+                "fit_score": "Score de adequação (0 a 1)",
+            },
+            hover_data={
+                "focus_theme": True,
+                "subscriber_tier": True,
+                "avg_views_per_video": ":,",
+                "suggested_partnership": True,
+            },
+        )
+        fig_creators.update_layout(xaxis_tickangle=-15, coloraxis_showscale=False)
+        st.plotly_chart(fig_creators, use_container_width=True)
+
+    with col_rank2:
+        st.markdown("**Critérios de ponderação transparente:**")
+        st.write("- **50%**: Alinhamento temático com fidelidade e aviação.")
+        st.write("- **30%**: Volume médio de visualizações por publicação.")
+        st.write("- **20%**: Eficiência estimada de custo por milhar (CPM).")
+        st.caption(
+            "Popularidade não garante conversão direta. As propostas de ação "
+            "são hipóteses de engajamento a serem validadas."
+        )
+
+    st.subheader("Painel de parcerias sugeridas")
+    tabela_influenciadores = influenciadores[
+        [
+            "ranking",
+            "creator_name",
+            "focus_theme",
+            "primary_platform",
+            "loyalty_focus",
+            "fit_score",
+            "suggested_partnership",
+        ]
+    ].rename(
+        columns={
+            "ranking": "Posição",
+            "creator_name": "Criador / Canal",
+            "focus_theme": "Foco Temático",
+            "primary_platform": "Plataforma Principal",
+            "loyalty_focus": "Enfoque em Fidelidade",
+            "fit_score": "Score de Adequação",
+            "suggested_partnership": "Ação de Parceria Sugerida",
+        }
+    )
+    st.dataframe(tabela_influenciadores, use_container_width=True, hide_index=True)
 
 
 # ============================================================
