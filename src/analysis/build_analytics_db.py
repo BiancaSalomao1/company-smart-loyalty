@@ -23,6 +23,8 @@ GOLD_FILES = {
     "recomendacoes_2025": "company_recomendacoes_2025.csv",
     "roi_scenarios": "roi_scenarios.csv",
     "perfis_clientes_sinteticos": "perfis_clientes_sinteticos.csv",
+    "dim_rotas_azul": "dim_rotas_azul.csv",
+    "fact_transacoes_sinteticas": "fact_transacoes_sinteticas.csv",
     "influenciadores_viagem": "influenciadores_viagem.csv",
 }
 
@@ -120,6 +122,33 @@ def create_database() -> None:
             FROM roi_scenarios
             """
         ) if table_exists(connection, "roi_scenarios") else None
+
+        # Visão mestre analítica de inteligência de clientes
+        connection.execute(
+            """
+            CREATE OR REPLACE VIEW customer_intelligence AS
+            SELECT * FROM perfis_clientes_sinteticos
+            """
+        ) if table_exists(connection, "perfis_clientes_sinteticos") else None
+
+        connection.execute(
+            """
+            CREATE OR REPLACE VIEW vw_customer_360 AS
+            SELECT
+                customer_id,
+                loyalty_tier_synthetic AS tier_atual,
+                months_since_last_flight AS recencia_dias,
+                flights_last_12m AS frequencia_12m,
+                total_spend_12m_brl AS valor_total_12m,
+                share_rotas_nobres,
+                service_issues_last_12m AS reclamacoes_relacionadas,
+                clv_simulado_12m_brl AS clv_score,
+                churn_risk_score AS churn_prob,
+                top_shap_reason,
+                persona
+            FROM perfis_clientes_sinteticos
+            """
+        ) if table_exists(connection, "perfis_clientes_sinteticos") else None
 
         print("\n=== TABELAS DISPONÍVEIS ===")
 

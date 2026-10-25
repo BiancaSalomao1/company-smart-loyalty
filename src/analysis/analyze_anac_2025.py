@@ -50,11 +50,13 @@ missing = [column for column in required_columns if column not in df.columns]
 if missing:
     raise ValueError(f"Colunas esperadas não encontradas: {missing}")
 
-# Filtra a companhia e salva os registros tratados na Silver.
-company = df[df["Nome Fantasia"].str.casefold() == "company linhas aéreas"].copy()
+# Filtra a companhia (Azul Linhas Aéreas) e salva os registros tratados na Silver.
+company = df[df["Nome Fantasia"].str.contains("azul", case=False, na=False)].copy()
+if company.empty:
+    company = df[df["Nome Fantasia"].str.contains("company", case=False, na=False)].copy()
 
 if company.empty:
-    raise ValueError("Nenhum registro encontrado para company Linhas Aéreas.")
+    raise ValueError("Nenhum registro encontrado para Azul Linhas Aéreas.")
 
 company["Data Abertura"] = pd.to_datetime(
     company["Data Abertura"], errors="coerce"
@@ -92,10 +94,10 @@ nao_resolvidas = (
 
 summary = pd.DataFrame([{
     "ano": 2025,
-    "empresa": "Company Linhas Aéreas",
+    "empresa": "Azul Linhas Aéreas",
     "total_reclamacoes": total,
     "reclamacoes_respondidas_pct": (
-        ["Respondida"].eq("S").mean() * 100
+        company["Respondida"].eq("S").mean() * 100
     ),
     "reclamacoes_avaliadas": len(avaliacoes_validas),
     "reclamacoes_resolvidas": (
